@@ -43,9 +43,9 @@ class Administration(commands.Cog):
                 return await ctx.send("Please indicate the id with the answer. `--id <id> --answer <message>`")
             answer = ' '.join(flags['answer'])
             cursor = self.bot.db.connection.cursor()
-            cursor.execute("SELECT id, user_id, flags, message FROM support WHERE id = %s", flags['id'])
+            cursor.execute("SELECT id, user_id, flags, message FROM support WHERE id = ?", (flags['id'],))
             out = cursor.fetchone()
-            cursor.execute("DELETE FROM support where id = %s", flags['id'])
+            cursor.execute("DELETE FROM support WHERE id = ?", (flags['id'],))
             self.bot.db.connection.commit()
             cursor.close()
             if out:
@@ -69,7 +69,7 @@ class Administration(commands.Cog):
                 return await ctx.send(f"No support ticket found with ID: {flags['id']}")
         elif 'id' in flags and flags['id'] and not flags['close']:
             cursor = self.bot.db.connection.cursor()
-            cursor.execute("SELECT id, user_id, flags, message FROM support WHERE id = %s", flags['id'])
+            cursor.execute("SELECT id, user_id, flags, message FROM support WHERE id = ?", (flags['id'],))
             out = cursor.fetchone()
             cursor.close()
             if out:
@@ -81,7 +81,7 @@ class Administration(commands.Cog):
                 return await ctx.send(f"No support ticket found with ID: {flags['id']}")
         elif flags['close'] and 'id' in flags and flags['id']:
             cursor = self.bot.db.connection.cursor()
-            cursor.execute("DELETE FROM support where id = %s", flags['id'])
+            cursor.execute("DELETE FROM support WHERE id = ?", (flags['id'],))
             self.bot.db.connection.commit()
             cursor.close()
             return await ctx.send(f"Support ID {flags['id']} closed")

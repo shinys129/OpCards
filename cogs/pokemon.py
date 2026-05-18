@@ -588,12 +588,17 @@ class Pokemon(commands.Cog):
             return emojis['RARER']
 
     def get_energy_types_emoji(self, text):
-        types = []
-        for energy in text:
-            types.append(emojis[energy.upper()])
-        if not types: # if no type
+        if not text:
             return [emojis['NONE']]
-        return types
+        type_list = [t.strip() for t in str(text).split(',') if t.strip()]
+        result = []
+        for energy in type_list:
+            key = energy.upper()
+            if key in emojis:
+                result.append(emojis[key])
+        if not result:
+            return [emojis['NONE']]
+        return result
 
 async def sort_list_of_dict(dictionary, criteria, skip = None, limit = None):
     # amount,rarity -> amount takes precedence, then sorts by rarity

@@ -96,7 +96,8 @@ class DbSqlite:
 
     async def update_server_prefix(self, serverID, prefix):
         c = self.connection.cursor()
-        c.execute("INSERT OR REPLACE INTO servers_config (server_id, prefix) VALUES (?, ?)", (serverID, prefix))
+        c.execute("INSERT OR IGNORE INTO servers_config (server_id) VALUES (?)", (serverID,))
+        c.execute("UPDATE servers_config SET prefix = ? WHERE server_id = ?", (prefix, serverID))
         self.connection.commit()
 
     async def get_server_channel_id_to_spam(self, serverID):
@@ -107,7 +108,8 @@ class DbSqlite:
 
     async def update_server_channel_id_to_spam(self, serverID, channelID):
         c = self.connection.cursor()
-        c.execute("INSERT OR REPLACE INTO servers_config (server_id, channel_id_to_spam) VALUES (?, ?)", (serverID, channelID))
+        c.execute("INSERT OR IGNORE INTO servers_config (server_id) VALUES (?)", (serverID,))
+        c.execute("UPDATE servers_config SET channel_id_to_spam = ? WHERE server_id = ?", (channelID, serverID))
         self.connection.commit()
 
     async def get_everyones_collection(self):
@@ -218,6 +220,9 @@ class DbSqlite:
                 break
         if not store_item:
             return None
+
+        # Ensure user exists in the database before checking money
+        await self.add_user(user)
 
         # Check the user has enough money
         current_money = await self.get_money(user)
@@ -643,28 +648,39 @@ class DbSqlite:
         c.execute("UPDATE users SET total_interactions = total_interactions + 1 WHERE user_id = ?", (userID,))
         self.connection.commit()
 
-    async def get_support_tickets(self, args=None):
+    async def get_support_tickets(self, args=None, skip=None, limit=None, count=False):
         c = self.connection.cursor()
-        stmt = "SELECT id, user_id, flags, message FROM support"
+        conditions = []
+        params = []
         if args:
-            conditions = []
-            params = []
             if args.get("error"):
                 conditions.append("flags LIKE '%error%'")
             if args.get("help"):
                 conditions.append("flags LIKE '%help%'")
             if args.get("suggestion"):
                 conditions.append("flags LIKE '%suggestion%'")
-            if conditions:
-                stmt += " WHERE " + " OR ".join(conditions)
             if args.get("id"):
-                stmt += " AND id = ?" if conditions else " WHERE id = ?"
+                conditions.append("id = ?")
                 params.append(args["id"])
-        c.execute(stmt, params if 'params' in dir() else ())
-        return c.fetchall()
+        where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        if count:
+            c.execute(f"SELECT COUNT(*) FROM support{where_clause}", params)
+            return c.fetchone()[0]
+        stmt = f"SELECT id, user_id, flags, message FROM support{where_clause}"
+        if limit is not None and skip is not None:
+            stmt += " LIMIT ? OFFSET ?"
+            params.extend([limit, skip])
+        elif limit is not None:
+            stmt += " LIMIT ?"
+            params.append(limit)
+        c.execute(stmt, params)
+        rows = c.fetchall()
+        return [{"id": r[0], "user_id": r[1], "flags": r[2], "message": r[3]} for r in rows]
 
     async def get_daily(self, user):
         now = datetime.datetime.now()
+        # Ensure user exists before giving daily reward
+        await self.add_user(user)
         c = self.connection.cursor()
         c.execute("SELECT redeemed_at FROM daily WHERE user_id = ?", (str(user.id),))
         row = c.fetchone()
@@ -994,8 +1010,8 @@ class DbSqlite:
                 c.execute("UPDATE pokemon_cards SET obtainable = ? WHERE types LIKE ?", (status, "%" + ty + "%"))
         self.connection.commit()
 
-    async def get_obtainability(self, card_id):
+    async def get_obtainability(self, rarity):
         c = self.connection.cursor()
-        c.execute("SELECT obtainable FROM pokemon_cards WHERE id = ?", (card_id,))
+        c.execute("SELECT obtainable FROM pokemon_cards WHERE rarity = ? LIMIT 1", (rarity,))
         row = c.fetchone()
         return row[0] if row else "yes"
