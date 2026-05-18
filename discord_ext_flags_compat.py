@@ -7,6 +7,12 @@ cogs can load without the original package.
 import functools
 from discord.ext import commands
 
+
+class ArgumentParsingError(commands.UserInputError):
+    """Raised when a flags command fails to parse arguments."""
+    pass
+
+
 def add_flag(name, nargs=None, type=None, default=None, action=None):
     """Decorator that adds a flag parameter to a command. (no-op compat shim)"""
     def decorator(func):

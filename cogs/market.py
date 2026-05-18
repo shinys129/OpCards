@@ -88,9 +88,9 @@ class Market(commands.Cog):
                 await ctx.send(embed = await self.bot.embeds.get(embed))
                 return
             if card['amount'] - amt == 0:
-                await self.bot.db.remove_card(ctx.author, card['id'])
+                await self.bot.db.remove_card(ctx.author, card['id'], amt)
             else:
-                await self.bot.db.decrement_card(ctx.author, card['id'], amount = amt)
+                await self.bot.db.decrement_card(ctx.author.id, card['id'], amount=amt)
             card = await self.bot.db.get_card_info(card['id'])
         else: # not found or you dont have the card
             embed = {'type': 'GENERAL', 'body': "Not found, or you don't have the card", 'title': 'Selling -- {}'.format(card_id),
@@ -98,7 +98,7 @@ class Market(commands.Cog):
             await ctx.send(embed = await self.bot.embeds.get(embed))
             return
         # add to market
-        response = await self.bot.db.add_to_market(ctx.author, price, card['rarity'], card['name'], card['id'], amount)
+        response = await self.bot.db.add_to_market(ctx.author, card['id'], price, card['rarity'], card['name'], amt)
         if response:
             #added to market
             embed = {'type': 'GENERAL', 'body': "Your card, {}, has been listed to the market".format(card['name']), 'title': 'Added to Market',

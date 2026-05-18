@@ -43,6 +43,9 @@ class Pokemon(commands.Cog):
     """Catch em all"""
     def __init__(self, bot):
         self.bot = bot
+        self.global_stats = None
+        self.bot_collection = None
+        self.cards = []
         self.update_cards.start()
         self.munch_obtainability.start()
         self.get_global_stats.start()

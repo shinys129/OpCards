@@ -124,7 +124,14 @@ class DbSqlite:
             GROUP BY card.super_type
         """)
         supertypes = dict(c.fetchall())
-        return {'rarity': rarities, 'supertype': supertypes}
+        c.execute("SELECT SUM(amount) FROM users_cards")
+        total = c.fetchone()[0] or 0
+        c.execute("SELECT COUNT(id) FROM pokemon_cards")
+        bot_total = c.fetchone()[0]
+        c.execute("SELECT COUNT(DISTINCT pokemon_card_id) FROM users_cards")
+        unique = c.fetchone()[0]
+        percent = round(unique / bot_total * 100, 2) if bot_total > 0 else 0
+        return {'rarity': rarities, 'supertype': supertypes, 'total': total, 'percent': percent}
 
     async def get_global_stats(self):
         c = self.connection.cursor()
@@ -158,7 +165,15 @@ class DbSqlite:
             JOIN users_cards ON users_cards.pokemon_card_id = pokemon_cards.id
             WHERE users_cards.user_id = ? GROUP BY rarity
         """, (user_id,))
-        return c.fetchall()
+        rows = c.fetchall()
+        rarity_dict = {r[0]: r[1] for r in rows}
+        total = sum(rarity_dict.values()) if rarity_dict else 0
+        c.execute("SELECT COUNT(id) FROM pokemon_cards")
+        bot_total = c.fetchone()[0]
+        c.execute("SELECT COUNT(DISTINCT pokemon_card_id) FROM users_cards WHERE user_id = ?", (user_id,))
+        unique = c.fetchone()[0]
+        percent = (unique / bot_total * 100) if bot_total > 0 else 0
+        return rarity_dict, total, percent
 
     async def get_total_cards_user(self, user_id):
         c = self.connection.cursor()
@@ -362,7 +377,7 @@ class DbSqlite:
             return {"name": row[0], "rarity": row[1], "id": row[2]}
         return None
 
-    async def remove_card(self, user, card_id, amount):
+    async def remove_card(self, user, card_id, amount=1):
         c = self.connection.cursor()
         c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
                   (str(user.id), card_id))
@@ -376,16 +391,17 @@ class DbSqlite:
         self.connection.commit()
 
     async def decrement_card(self, user_id, card_id, amount=1):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
         c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
-                  (str(user_id), card_id))
+                  (uid, card_id))
         row = c.fetchone()
         if row and row[0] <= amount:
             c.execute("DELETE FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
-                      (str(user_id), card_id))
+                      (uid, card_id))
         else:
             c.execute("UPDATE users_cards SET amount = amount - ? WHERE user_id = ? AND pokemon_card_id = ?",
-                      (amount, str(user_id), card_id))
+                      (amount, uid, card_id))
         self.connection.commit()
 
     async def add_to_market(self, user, card_id, cost, rarity, card_name, amount):
@@ -395,6 +411,7 @@ class DbSqlite:
             VALUES (?, ?, ?, ?, ?, ?)
         """, (cost, card_name, card_id, amount, str(user.id), rarity))
         self.connection.commit()
+        return True
 
     async def get_market_listing(self, market_id):
         c = self.connection.cursor()
@@ -423,53 +440,154 @@ class DbSqlite:
         return c.fetchall()
 
     async def get_user_sort(self, user_id):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
-        c.execute("SELECT sort FROM users WHERE user_id = ?", (str(user_id),))
+        c.execute("SELECT sort FROM users WHERE user_id = ?", (uid,))
         row = c.fetchone()
         return row[0] if row else None
 
     async def update_user_sort(self, user_id, sort):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
-        c.execute("UPDATE users SET sort = ? WHERE user_id = ?", (sort, str(user_id)))
+        c.execute("UPDATE users SET sort = ? WHERE user_id = ?", (sort, uid))
         self.connection.commit()
 
     async def get_all_cards(self):
         c = self.connection.cursor()
         c.execute("SELECT name, rarity, series, id, types FROM pokemon_cards")
-        return c.fetchall()
+        return [{"name": r[0], "rarity": r[1], "series": r[2], "id": r[3], "types": r[4]} for r in c.fetchall()]
 
     async def get_dex(self, user_id):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
-        c.execute("SELECT DISTINCT pokemon_card_id FROM users_cards WHERE user_id = ?", (str(user_id),))
-        return c.fetchall()
+        c.execute("SELECT DISTINCT pokemon_card_id FROM users_cards WHERE user_id = ?", (uid,))
+        return {row[0] for row in c.fetchall()}
 
-    async def get_marketV2(self, args=None):
+    def _build_where_conditions(self, queries):
+        """Build WHERE clause parts and params from a queries dict."""
+        parts = []
+        params = []
+        for key, val in queries.items():
+            if isinstance(val, tuple):
+                placeholders = ','.join(['?'] * len(val))
+                parts.append(f"{key} IN ({placeholders})")
+                params.extend(val)
+            elif isinstance(val, str) and val[:1] in ('>', '<', '='):
+                parts.append(f"{key} {val}")
+            else:
+                parts.append(f"{key} LIKE ?")
+                params.append(val)
+        return parts, params
+
+    def _get_user_cards_sort_sql(self, sort):
+        """Convert sort string (e.g. 'amount,rarity') to SQL ORDER BY clause."""
+        if not sort:
+            return "users_cards.amount DESC"
+        parts = []
+        for crit in sort.split(','):
+            crit = crit.strip()
+            if crit == 'amount':
+                parts.append("users_cards.amount DESC")
+            elif crit == 'name':
+                parts.append("pokemon_cards.name ASC")
+            elif crit == 'id':
+                parts.append("pokemon_cards.id ASC")
+            elif crit == 'series':
+                parts.append("""CASE pokemon_cards.series
+                    WHEN 'Sword & Shield' THEN 1 WHEN 'Sun & Moon' THEN 2 WHEN 'XY' THEN 3
+                    WHEN 'Black & White' THEN 4 WHEN 'HeartGold & SoulSilver' THEN 5
+                    WHEN 'Platinum' THEN 6 WHEN 'POP' THEN 7 WHEN 'Diamond & Pearl' THEN 8
+                    WHEN 'EX' THEN 9 WHEN 'E-Card' THEN 10 WHEN 'Neo' THEN 11
+                    WHEN 'Gym' THEN 12 WHEN 'Base' THEN 13 ELSE 999 END ASC""")
+            elif crit == 'rarity':
+                parts.append("""CASE pokemon_cards.rarity
+                    WHEN 'LEGEND' THEN 1 WHEN 'Rare Rainbow' THEN 2 WHEN 'VM' THEN 3
+                    WHEN 'V' THEN 5 WHEN 'Shining' THEN 6 WHEN 'Amazing Rare' THEN 7
+                    WHEN 'BREAK' THEN 10 WHEN 'Rare Secret' THEN 11 WHEN 'GX' THEN 12
+                    WHEN 'EX' THEN 13 WHEN 'Rare Ultra' THEN 14 WHEN 'Rare Holo' THEN 15
+                    WHEN 'Rare' THEN 16 WHEN 'Uncommon' THEN 17 WHEN 'Common' THEN 18
+                    ELSE 19 END ASC""")
+        return ', '.join(parts) if parts else "users_cards.amount DESC"
+
+    async def get_marketV2(self, skip=0, limit=20, queries=None, sort=False):
         c = self.connection.cursor()
-        c.execute("""
+        base = """
             SELECT market.id, market.cost, market.rarity, market.card_name,
                    market.card_id, market.amount, market.owner_id,
-                   pokemon_cards.name FROM market
+                   pokemon_cards.name
+            FROM market
             JOIN pokemon_cards ON pokemon_cards.id = market.card_id
-        """)
-        return c.fetchall()
+        """
+        params = []
+        if queries:
+            where_parts, extra_params = self._build_where_conditions(queries)
+            if where_parts:
+                base += " WHERE " + " AND ".join(where_parts)
+                params.extend(extra_params)
+        if sort:
+            base += " ORDER BY market.cost ASC"
+        base += " LIMIT ? OFFSET ?"
+        params.extend([limit, skip])
+        c.execute(base, params)
+        rows = c.fetchall()
+        return [{"market_id": r[0], "cost": r[1], "rarity": r[2], "card_name": r[3],
+                 "card_id": r[4], "amount": r[5], "owner_id": r[6], "name": r[7]}
+                for r in rows]
 
-    async def get_market_count(self, args=None):
+    async def get_market_count(self, queries=None):
         c = self.connection.cursor()
-        c.execute("SELECT COUNT(*) FROM market")
+        base = """
+            SELECT COUNT(*) FROM market
+            JOIN pokemon_cards ON pokemon_cards.id = market.card_id
+        """
+        params = []
+        if queries:
+            where_parts, extra_params = self._build_where_conditions(queries)
+            if where_parts:
+                base += " WHERE " + " AND ".join(where_parts)
+                params.extend(extra_params)
+        c.execute(base, params)
         return c.fetchone()[0]
 
-    async def get_user_cardsV2(self, user_id):
+    async def get_user_cardsV2(self, user_id, skip=0, limit=20, queries=None, sort=None):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
-        c.execute("""
-            SELECT name, rarity, series, id, users_cards.amount, types FROM pokemon_cards
+        base = """
+            SELECT pokemon_cards.name, pokemon_cards.rarity, pokemon_cards.series,
+                   pokemon_cards.id, users_cards.amount, pokemon_cards.types
+            FROM pokemon_cards
             JOIN users_cards ON users_cards.pokemon_card_id = pokemon_cards.id
             WHERE users_cards.user_id = ?
-        """, (str(user_id),))
-        return c.fetchall()
+        """
+        params = [uid]
+        if queries:
+            where_parts, extra_params = self._build_where_conditions(queries)
+            if where_parts:
+                base += " AND " + " AND ".join(where_parts)
+                params.extend(extra_params)
+        order = self._get_user_cards_sort_sql(sort)
+        base += f" ORDER BY {order} LIMIT ? OFFSET ?"
+        params.extend([limit, skip])
+        c.execute(base, params)
+        rows = c.fetchall()
+        return [{"name": r[0], "rarity": r[1], "series": r[2], "id": r[3],
+                 "amount": r[4], "types": r[5]} for r in rows]
 
-    async def get_user_cards_count(self, user_id):
+    async def get_user_cards_count(self, user_id, queries=None):
+        uid = str(user_id.id) if hasattr(user_id, 'id') else str(user_id)
         c = self.connection.cursor()
-        c.execute("SELECT COUNT(*) FROM users_cards WHERE user_id = ?", (str(user_id),))
+        base = """
+            SELECT COUNT(*) FROM pokemon_cards
+            JOIN users_cards ON users_cards.pokemon_card_id = pokemon_cards.id
+            WHERE users_cards.user_id = ?
+        """
+        params = [uid]
+        if queries:
+            where_parts, extra_params = self._build_where_conditions(queries)
+            if where_parts:
+                base += " AND " + " AND ".join(where_parts)
+                params.extend(extra_params)
+        c.execute(base, params)
         return c.fetchone()[0]
 
     async def get_user_cards(self, user_id, page=1, limit=10):
@@ -482,27 +600,43 @@ class DbSqlite:
         """, (str(user_id), limit, offset))
         return c.fetchall()
 
-    async def remove_from_market(self, market, user=None):
+    async def remove_from_market(self, user, market_id):
         c = self.connection.cursor()
-        c.execute("DELETE FROM market WHERE owner_id = ? AND id = ?",
-                  (market["owner_id"], market["id"]))
-        self.connection.commit()
-
-    async def buy_from_market(self, market, user):
-        c = self.connection.cursor()
-        # Remove from market
-        c.execute("DELETE FROM market WHERE id = ?", (market["id"],))
-        # Add card to buyer
-        c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
-                  (str(user.id), market["card_id"]))
+        c.execute("SELECT id, card_name, owner_id FROM market WHERE id = ?", (market_id,))
         row = c.fetchone()
-        if row:
+        if not row:
+            return False, None
+        owner_id = row[2]
+        card_name = row[1]
+        if str(user.id) != str(owner_id):
+            return False, None
+        c.execute("DELETE FROM market WHERE id = ?", (market_id,))
+        self.connection.commit()
+        return True, card_name
+
+    async def buy_from_market(self, user, market_id):
+        c = self.connection.cursor()
+        c.execute("SELECT id, cost, card_id, card_name, amount FROM market WHERE id = ?", (market_id,))
+        row = c.fetchone()
+        if not row:
+            return False, "Market listing not found"
+        listing_id, cost, card_id, card_name, card_amount = row
+        user_money = await self.get_money(user)
+        if user_money < cost:
+            return False, f"You need **${cost}** but only have **${user_money}**"
+        await self.subtract_money(user, cost)
+        c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
+                  (str(user.id), card_id))
+        existing = c.fetchone()
+        if existing:
             c.execute("UPDATE users_cards SET amount = amount + ? WHERE user_id = ? AND pokemon_card_id = ?",
-                      (market["amount"], str(user.id), market["card_id"]))
+                      (card_amount, str(user.id), card_id))
         else:
             c.execute("INSERT INTO users_cards (user_id, pokemon_card_id, amount) VALUES (?, ?, ?)",
-                      (str(user.id), market["card_id"], market["amount"]))
+                      (str(user.id), card_id, card_amount))
+        c.execute("DELETE FROM market WHERE id = ?", (listing_id,))
         self.connection.commit()
+        return True, f"Bought **{card_name}** (x{card_amount}) for **${cost}**"
 
     async def increment_user_interactions(self, userID):
         c = self.connection.cursor()
@@ -702,8 +836,26 @@ class DbSqlite:
         c.execute("DELETE FROM daily WHERE user_id = ?", (str(user_id),))
         self.connection.commit()
 
-    async def random_card(self, rarity=None):
-        return await self.get_rng_cards(rarity)
+    async def random_card(self, rarity=None, type_=None):
+        c = self.connection.cursor()
+        conditions = ["obtainable = 'yes'"]
+        params = []
+        if rarity and rarity.lower() == 'rare+':
+            conditions.append("rarity NOT IN ('Common', 'Uncommon', 'None')")
+        elif rarity:
+            conditions.append("rarity = ?")
+            params.append(rarity)
+        if type_:
+            conditions.append("types LIKE ?")
+            params.append(f"%{type_}%")
+        query = ("SELECT name, rarity, series, id, types FROM pokemon_cards"
+                 f" WHERE {' AND '.join(conditions)} ORDER BY RANDOM() LIMIT 1")
+        c.execute(query, params)
+        row = c.fetchone()
+        if row:
+            return {"name": row[0], "rarity": row[1], "series": row[2], "id": row[3], "types": row[4]}
+        # Fallback: any obtainable card
+        return await self.get_rng_cards()
 
     async def get_random_card(self):
         c = self.connection.cursor()

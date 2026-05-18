@@ -173,7 +173,11 @@ class Bot(commands.Cog):
         flags['flags'] = ', '.join(true_f)
     
         cursor = self.bot.db.connection.cursor()
-        cursor.execute("INSERT INTO support(user_id, flags, message) VALUES (%(user_id)s, %(flags)s, %(message)s)", flags)
+        cursor.execute(
+            "INSERT INTO support(user_id, flags, message) VALUES (?, ?, ?)",
+            (flags['user_id'], flags['flags'], flags['message'])
+        )
+        self.bot.db.connection.commit()
         cursor.close()
 
         embed = self.bot.Embed(color = 0x6CFF00)
