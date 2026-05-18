@@ -6,7 +6,7 @@ import discord_ext_flags_compat as flags
 import datetime
 import random
 import math
-from helpers import pagination, constants, checks
+from helpers import pagination, constants, checks, card_images
 import asyncio
 
 CHANGELOGS = ''
@@ -382,9 +382,8 @@ class Pokemon(commands.Cog):
         response, body = await self.bot.db.get_daily(ctx.author)
         current_money = await self.bot.db.get_money(ctx.author)
         if response:
-            import os
-            img_path = 'data/images/{}.webp'.format(body['id'])
-            if not os.path.exists(img_path):
+            img_path = await card_images.get_card_image_path(body['id'])
+            if img_path is None:
                 img_path = 'back.webp'
             picture_file = discord.File(img_path, filename = 'daily.webp')
             embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 'user': str(ctx.author), 'attachment': 'daily.webp',
@@ -409,9 +408,8 @@ class Pokemon(commands.Cog):
 
         card = await self.bot.db.get_user_card(ctx.author ,card_id)
         if card:
-            import os
-            img_path = 'data/images/{}.webp'.format(card['id'])
-            if not os.path.exists(img_path):
+            img_path = await card_images.get_card_image_path(card['id'])
+            if img_path is None:
                 img_path = 'back.webp'
             picture_file = discord.File(img_path, filename = 'show.webp')
             embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 'body': '', 'title': 'Showing card -- {}'.format(card['id']),
@@ -520,9 +518,8 @@ class Pokemon(commands.Cog):
         card = await self.bot.db.get_random_card()
         prefix = await self.bot.db.get_server_prefix(serverID)
         await self.bot.db.store_drop(card, channel_id) # store current drop in db
-        import os
-        img_path = 'data/images/{}.webp'.format(card['id'])
-        if not os.path.exists(img_path):
+        img_path = await card_images.get_card_image_path(card['id'])
+        if img_path is None:
             img_path = 'back.webp'
         picture_file = discord.File(img_path, filename = 'card.webp')
         channel = self.bot.get_channel(int(channel_id))
