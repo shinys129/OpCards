@@ -46,6 +46,8 @@ class MunchBot(commands.AutoShardedBot):
     def __init__(self):
         self.config = config
         self.ready = False
+        self.cluster_name = "Main"
+        self.cluster_idx = 0
         super().__init__(
             command_prefix=determine_prefix,
             case_insensitive=True,

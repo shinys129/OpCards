@@ -19,7 +19,7 @@ class Bot(commands.Cog):
             self.bot.prefixes = {}
 
         self.update_status.start()
-        if self.bot.cluster_idx == 0:
+        if getattr(self.bot, "cluster_idx", 0) == 0:
             self.post_dbl.start()
             self.post_dbotsgg.start()
             #self.remind_votes.start()

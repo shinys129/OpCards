@@ -10,8 +10,9 @@ class Logging(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        self.log = logging.getLogger(f"Cluster#{self.bot.cluster_name}")
-        handler = logging.FileHandler(f"logs/commands-{self.bot.cluster_name}.log")
+        cluster_name = getattr(self.bot, "cluster_name", "Main")
+        self.log = logging.getLogger(f"Cluster#{cluster_name}")
+        handler = logging.FileHandler(f"logs/commands-{cluster_name}.log")
         handler.setFormatter(formatter)
         self.log.handlers = [handler]
 

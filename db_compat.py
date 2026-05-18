@@ -110,14 +110,21 @@ class DbSqlite:
         c.execute("INSERT OR REPLACE INTO servers_config (server_id, channel_id_to_spam) VALUES (?, ?)", (serverID, channelID))
         self.connection.commit()
 
-    async def get_everyones_collection(self, page):
+    async def get_everyones_collection(self):
         c = self.connection.cursor()
         c.execute("""
             SELECT card.rarity, SUM(users_cards.amount) FROM pokemon_cards AS card
             JOIN users_cards ON users_cards.pokemon_card_id = card.id
             GROUP BY card.rarity
         """)
-        return c.fetchall()
+        rarities = dict(c.fetchall())
+        c.execute("""
+            SELECT card.super_type, SUM(users_cards.amount) FROM pokemon_cards AS card
+            JOIN users_cards ON users_cards.pokemon_card_id = card.id
+            GROUP BY card.super_type
+        """)
+        supertypes = dict(c.fetchall())
+        return {'rarity': rarities, 'supertype': supertypes}
 
     async def get_global_stats(self):
         c = self.connection.cursor()
@@ -137,7 +144,12 @@ class DbSqlite:
     async def get_bot_collection(self):
         c = self.connection.cursor()
         c.execute("SELECT rarity, COUNT(rarity) FROM pokemon_cards GROUP BY rarity")
-        return c.fetchall()
+        rarities = dict(c.fetchall())
+        c.execute("SELECT super_type, COUNT(super_type) FROM pokemon_cards GROUP BY super_type")
+        supertypes = dict(c.fetchall())
+        c.execute("SELECT COUNT(id) FROM pokemon_cards")
+        total = c.fetchone()[0]
+        return rarities, supertypes, total
 
     async def get_user_stats(self, user_id):
         c = self.connection.cursor()
