@@ -27,7 +27,11 @@ class Market(commands.Cog):
         bought = await self.bot.db.buy(ctx.author, item)
         random_card = bought[0]['id'] if bought else None # get first card in list of cards -- min 1 so its fine, max 10 -- shuffles if 10 so rng
         if bought:
-            picture_file = discord.File(f'data/images/{random_card}.webp', filename = 'card.webp')
+            import os
+            img_path = f'data/images/{random_card}.webp'
+            if not os.path.exists(img_path):
+                img_path = 'back.webp'
+            picture_file = discord.File(img_path, filename = 'card.webp')
             embed = {   'type': 'GENERAL-ATTACHMENT-IMAGE', 'title': 'Bought {}'.format(item),
                         'footer': random.choice(constants.FOOTERS), 'color': discord.Color.dark_red(),
                         'body': '\n'.join('{} {} | **{}** | {} | {}'.format(self.bot.pokemon.get_rarity_emoji(card['rarity']),
@@ -241,7 +245,11 @@ class Market(commands.Cog):
             market_id = flags['show']
             listing = await self.bot.db.get_market_listing(market_id)
             if listing:
-                picture_file = discord.File('data/images/{}.webp'.format(listing['card_id']), filename = 'show.webp')
+                import os
+                img_path = 'data/images/{}.webp'.format(listing['card_id'])
+                if not os.path.exists(img_path):
+                    img_path = 'back.webp'
+                picture_file = discord.File(img_path, filename = 'show.webp')
                 embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 
                             'body': f"{listing['card_name']} | {listing['rarity']} | {listing['card_id']}\n${listing['cost']} | {listing['amount']} cards", 
                             'title': 'Showing Market Listing - {}'.format(listing['id']),

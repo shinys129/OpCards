@@ -94,7 +94,11 @@ class Gambling(commands.Cog):
             card = await self.bot.db.random_card(type_ = poke_type, rarity = 'rare+')
             await self.bot.db.add_user_card(ctx.author, card['id'])
             # send message about the card as well
-            picture_file = discord.File('data/images/{}.webp'.format(card['id']), filename = 'won.webp')
+            import os
+            img_path = 'data/images/{}.webp'.format(card['id'])
+            if not os.path.exists(img_path):
+                img_path = 'back.webp'
+            picture_file = discord.File(img_path, filename = 'won.webp')
             embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 'body': '', 'title': 'You won -- {} | {}'.format(card['name'], card['id']),
                         'color': discord.Color.green(), 'footer': 'Gambling is good?',
                         'attachment': 'won.webp'}

@@ -193,7 +193,103 @@ class DbSqlite:
         self.connection.commit()
 
     async def buy(self, user, item):
-        pass
+        from helpers import constants
+
+        # Find the store item by name (case-insensitive)
+        store_item = None
+        for si in constants.STORE:
+            if si['name'].lower() == item.lower():
+                store_item = si
+                break
+        if not store_item:
+            return None
+
+        # Check the user has enough money
+        current_money = await self.get_money(user)
+        if current_money < store_item['cost']:
+            return None
+
+        # Deduct the cost
+        await self.subtract_money(user, store_item['cost'])
+
+        cards = []
+        item_name = store_item['name']
+
+        # ── Single-rarity purchases (Common / Uncommon / Rare) ──
+        if item_name in ('Common', 'Uncommon', 'Rare'):
+            card = await self.get_rng_cards(rarity=item_name)
+            if card:
+                await self.add_user_card(user, card['id'])
+                cards.append(card)
+            return cards
+
+        # ── Booster packs — 10 cards from a specific series ──
+        series = item_name
+        # 6 Common cards
+        for _ in range(6):
+            card = await self._get_card_for_pack(series, 'Common')
+            if card:
+                await self.add_user_card(user, card['id'])
+                cards.append(card)
+        # 3 Uncommon cards
+        for _ in range(3):
+            card = await self._get_card_for_pack(series, 'Uncommon')
+            if card:
+                await self.add_user_card(user, card['id'])
+                cards.append(card)
+        # 1 Rare+ card
+        card = await self._get_card_for_pack(series, rare_plus=True)
+        if card:
+            await self.add_user_card(user, card['id'])
+            cards.append(card)
+
+        return cards
+
+    async def _get_card_for_pack(self, series=None, rarity=None, rare_plus=False):
+        """Pick a random card by series and/or rarity. Falls back to any series if needed."""
+        c = self.connection.cursor()
+        if rare_plus:
+            # Any rarity that is NOT Common or Uncommon
+            c.execute("""
+                SELECT name, rarity, series, id, types FROM pokemon_cards
+                WHERE series = ? AND obtainable = 'yes'
+                AND rarity NOT IN ('Common', 'Uncommon', 'None')
+                ORDER BY RANDOM() LIMIT 1
+            """, (series,))
+            row = c.fetchone()
+            if not row:
+                # Fallback: any rare+ from any series
+                c.execute("""
+                    SELECT name, rarity, series, id, types FROM pokemon_cards
+                    WHERE obtainable = 'yes'
+                    AND rarity NOT IN ('Common', 'Uncommon', 'None')
+                    ORDER BY RANDOM() LIMIT 1
+                """)
+                row = c.fetchone()
+        elif rarity and series:
+            c.execute("""
+                SELECT name, rarity, series, id, types FROM pokemon_cards
+                WHERE series = ? AND rarity = ? AND obtainable = 'yes'
+                ORDER BY RANDOM() LIMIT 1
+            """, (series, rarity))
+            row = c.fetchone()
+            if not row:
+                # Fallback: any series with this rarity
+                c.execute("""
+                    SELECT name, rarity, series, id, types FROM pokemon_cards
+                    WHERE rarity = ? AND obtainable = 'yes'
+                    ORDER BY RANDOM() LIMIT 1
+                """, (rarity,))
+                row = c.fetchone()
+        else:
+            c.execute("""
+                SELECT name, rarity, series, id, types FROM pokemon_cards
+                WHERE obtainable = 'yes' ORDER BY RANDOM() LIMIT 1
+            """)
+            row = c.fetchone()
+        if row:
+            return {"name": row[0], "rarity": row[1], "series": row[2], "id": row[3], "types": row[4]}
+        return None
 
     async def get_rng_cards(self, rarity=None):
         c = self.connection.cursor()
@@ -441,13 +537,21 @@ class DbSqlite:
         if row:
             redeemed = datetime.datetime.fromisoformat(row[0])
             if (now - redeemed).total_seconds() < 86400:
-                return False
+                # Calculate remaining time
+                remaining = 86400 - (now - redeemed).total_seconds()
+                hours = int(remaining // 3600)
+                minutes = int((remaining % 3600) // 60)
+                return False, f"{hours}h {minutes}m"
             c.execute("UPDATE daily SET redeemed_at = ? WHERE user_id = ?", (now.isoformat(), str(user.id)))
         else:
             c.execute("INSERT INTO daily (user_id, redeemed_at) VALUES (?, ?)", (str(user.id), now.isoformat()))
         c.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (DAILY_MONEY, str(user.id)))
+        # Give a random card as well
+        card = await self.get_rng_cards()
+        if card:
+            await self.add_user_card(user, card['id'])
         self.connection.commit()
-        return True
+        return True, card
 
     async def add_money(self, user, amount):
         c = self.connection.cursor()

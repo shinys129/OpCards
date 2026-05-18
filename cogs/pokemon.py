@@ -366,10 +366,14 @@ class Pokemon(commands.Cog):
         """Redeem daily reward"""
 
         now = datetime.datetime.now()
-        response, body = await self.bot.db.get_daily(ctx.author, now)
+        response, body = await self.bot.db.get_daily(ctx.author)
         current_money = await self.bot.db.get_money(ctx.author)
         if response:
-            picture_file = discord.File('data/images/{}.webp'.format(body['id']), filename = 'daily.webp')
+            import os
+            img_path = 'data/images/{}.webp'.format(body['id'])
+            if not os.path.exists(img_path):
+                img_path = 'back.webp'
+            picture_file = discord.File(img_path, filename = 'daily.webp')
             embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 'user': str(ctx.author), 'attachment': 'daily.webp',
                                     'color': discord.Color.gold(), 'title': 'Daily Reward', 'footer': random.choice(FOOTER),
                                     'body': '\n'.join(["Noice, you claimed your dailies.",
@@ -392,7 +396,11 @@ class Pokemon(commands.Cog):
 
         card = await self.bot.db.get_user_card(ctx.author ,card_id)
         if card:
-            picture_file = discord.File('data/images/{}.webp'.format(card['id']), filename = 'show.webp')
+            import os
+            img_path = 'data/images/{}.webp'.format(card['id'])
+            if not os.path.exists(img_path):
+                img_path = 'back.webp'
+            picture_file = discord.File(img_path, filename = 'show.webp')
             embed = {'type': 'GENERAL-ATTACHMENT-IMAGE', 'body': '', 'title': 'Showing card -- {}'.format(card['id']),
                         'color': discord.Color.green(), 'footer': random.choice(FOOTER),
                         'attachment': 'show.webp'}
@@ -499,7 +507,11 @@ class Pokemon(commands.Cog):
         card = await self.bot.db.get_random_card()
         prefix = await self.bot.db.get_server_prefix(serverID)
         await self.bot.db.store_drop(card, channel_id) # store current drop in db
-        picture_file = discord.File('data/images/{}.webp'.format(card['id']), filename = 'card.webp')
+        import os
+        img_path = 'data/images/{}.webp'.format(card['id'])
+        if not os.path.exists(img_path):
+            img_path = 'back.webp'
+        picture_file = discord.File(img_path, filename = 'card.webp')
         channel = self.bot.get_channel(int(channel_id))
         # TODO bot may not be able to get channel cuz of permission or whatever
         # should return something? but where to send? or just log it?
