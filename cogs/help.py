@@ -1,7 +1,8 @@
 import itertools
 
 import discord
-from discord.ext import commands, flags
+from discord.ext import commands
+import discord_ext_flags_compat as flags
 from helpers import pagination
 import random
 
@@ -17,7 +18,7 @@ class CustomHelpCommand(commands.HelpCommand):
             await ctx.send(str(error.original))
 
     def make_page_embed(
-        self, commands, title="Munch Help", description=discord.Embed.Empty
+        self, commands, title="Munch Help", description=None
     ):
         embed = self.context.bot.Embed(color=0xE67D23)
         embed.title = title
@@ -29,11 +30,7 @@ class CustomHelpCommand(commands.HelpCommand):
         for command in commands:
             signature = self.clean_prefix + command.qualified_name + " "
 
-            signature += (
-                "[args...]"
-                if isinstance(command, flags.FlagCommand)
-                else command.signature
-            )
+            signature += command.signature or "[args...]"
 
             embed.add_field(
                 name=signature,
@@ -44,7 +41,7 @@ class CustomHelpCommand(commands.HelpCommand):
         return embed
 
     def make_default_embed(
-        self, cogs, title="Munch Categories", description=discord.Embed.Empty
+        self, cogs, title="Munch Categories", description=None
     ):
         embed = self.context.bot.Embed(color=0xE67D23)
         embed.title = title
@@ -84,7 +81,7 @@ class CustomHelpCommand(commands.HelpCommand):
             description = (
                 (cog and cog.description)
                 if (cog and cog.description) is not None
-                else discord.Embed.Empty
+                else None
             )
             cogs.append((cog, description, commands))
         
@@ -107,7 +104,7 @@ class CustomHelpCommand(commands.HelpCommand):
         embed = self.make_page_embed(
             filtered,
             title=(cog and cog.qualified_name or "Other") + " Commands",
-            description=discord.Embed.Empty if cog is None else cog.description,
+            description=None if cog is None else cog.description,
         )
 
         await ctx.send(embed=embed)
@@ -145,9 +142,9 @@ class CustomHelpCommand(commands.HelpCommand):
 
         await self.context.send(embed=embed)
 
-def setup(bot):
+async def setup(bot):
     bot.old_help_command = bot.help_command
     bot.help_command = CustomHelpCommand()
 
-def teardown(bot):
+async def teardown(bot):
     bot.help_command = bot.old_help_command

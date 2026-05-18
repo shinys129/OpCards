@@ -104,5 +104,5 @@ class Embeds(commands.Cog):
                 body = 'I suck'
             ).set_footer(text = 'im bad at coding')
 
-def setup(bot):
-    bot.add_cog(Embeds(bot))
+async def setup(bot):
+    await bot.add_cog(Embeds(bot))

@@ -1,7 +1,8 @@
 # for pokemon functionalities
 
 import discord
-from discord.ext import commands, flags, tasks
+from discord.ext import commands, tasks
+import discord_ext_flags_compat as flags
 import datetime
 import random
 import math
@@ -193,7 +194,7 @@ class Pokemon(commands.Cog):
         stats_embed = { 'type': 'GENERAL-THUMBNAIL', 'title': '{} Cards'.format(str(user)),
                         'footer': random.choice(FOOTER), 'color': discord.Color.dark_orange(),
                         'body': '**{}** cards collected -- **{}%** complete\nMoney: **${}**'.format(total, '{:.2f}'.format(percent), money),
-                        'stats':  rarity, 'thumbnail': str(user.avatar_url)}
+                        'stats':  rarity, 'thumbnail': str(user.display_avatar.url if hasattr(user, 'display_avatar') else user.avatar)}
         await ctx.send(embed = await self.bot.embeds.get(stats_embed))
 
     @commands.command(aliases=["money"])
@@ -204,7 +205,7 @@ class Pokemon(commands.Cog):
         money = await self.bot.db.get_money(user)
         money_embed = { 'type': 'GENERAL-THUMBNAIL', 'title': f'{str(user)} Wallet',
                         'footer': random.choice(FOOTER), 'color': discord.Color.dark_orange(),
-                        'body': f"Money: **${money}**", 'thumbnail': str(user.avatar_url)}
+                        'body': f"Money: **${money}**", 'thumbnail': str(user.display_avatar.url if hasattr(user, 'display_avatar') else user.avatar)}
         await ctx.send(embed = await self.bot.embeds.get(money_embed))
 
     @flags.add_flag('--name', action = 'store_true')
@@ -624,5 +625,5 @@ def is_int(s):
     except:
         return False
 
-def setup(bot):
-    bot.add_cog(Pokemon(bot))
+async def setup(bot):
+    await bot.add_cog(Pokemon(bot))

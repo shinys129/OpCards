@@ -2,10 +2,10 @@
 
 import datetime
 import random
-#from pokemon import STORE, DAILY_MONEY
-import pymysql
-from discord.ext import commands, flags, tasks
+from discord.ext import commands, tasks
+import discord_ext_flags_compat as flags
 from helpers import constants
+from db_compat import DbSqlite
 
 DAILY_MONEY = 200 # 200 base daily money, more if event
 STORE = [ # 10 cards booster pack, 6 common, 3 uncommon, 1 rare and above, rare+ is 5th from bottom?
@@ -29,46 +29,26 @@ STORE = [ # 10 cards booster pack, 6 common, 3 uncommon, 1 rare and above, rare+
 # TODO should clean up and merge similar functions together
 
 
-class Db(commands.Cog):
+class Db(commands.Cog, DbSqlite):
     def __init__(self, bot):
         self.bot = bot
-        connection = pymysql.connect(  host = self.bot.config.DB_RDS_HOST, user = self.bot.config.DB_USERNAME,
-                                            password = self.bot.config.DB_PASSWORD, database = self.bot.config.DB_NAME, 
-                                            connect_timeout = 5, charset = 'utf8')
-        self.connection = connection
+        DbSqlite.__init__(self, bot)
 
     async def get_connection(self):
         return self.connection
 
     async def reconnect(self):
-        if not self.connection.open:
-            self.connection.ping(reconnect = True)
+        pass
 
-    async def manual_reconnect():
-        conn = True
-        resp = ''
-        try:
-            if not self.connection.open:
-                self.connection.ping(reconnect = True) # reconnect db
-                resp += 'Reconnected to database\n'
-            if not self.connection.open: #check if actually reconnected
-                conn = False
-                resp += 'Not actually reconnected'
-            return conn, 'Still connected to database' if not resp else resp
-        except Exception as e:
-            conn = False
-            resp += 'Error while trying to reconnect - {}'.format(e)
-            return conn, resp
+    async def manual_reconnect(self):
+        return True, "SQLite is always connected"
 
     async def get_server_prefix(self, serverID): # gets the server prefix, so servers can setup their own prefix
         try:
-            db_cursor = self.connection.cursor()
-            db_cursor.execute('select prefix from servers_config where server_id = %s', [serverID])
-            out = []
-            for row in db_cursor: # should only return 1 row cuz primary key
-                out.append(row)
-            db_cursor.close()
-            return out[0][0]
+            c = self.connection.cursor()
+            c.execute('select prefix from servers_config where server_id = ?', (serverID,))
+            row = c.fetchone()
+            return row[0] if row else 'p!'
         except Exception as e:
             return 'p!'
 
@@ -86,7 +66,7 @@ class Db(commands.Cog):
         db_cursor = self.connection.cursor()
         db_cursor.execute('''insert into servers(name, server_id, server_owner_name, server_owner_id, region, joined_at) 
                                 values(%s,%s,%s,%s,%s,%s)''', [ server.name, str(server.id), str(server.owner),
-                                                                str(server.owner_id), str(server.region), current_date_time])
+                                                                str(server.owner_id), str(getattr(server, 'preferred_locale', 'unknown')), current_date_time])
         self.connection.commit()
         db_cursor.execute('insert into servers_config(server_id) values(%s)', [str(server.id)])
         self.connection.commit()
@@ -148,7 +128,7 @@ class Db(commands.Cog):
             self.connection.commit()
             db_cursor.close()
         if before.region != after.region: # update region
-            db_cursor.execute('update servers set region = %s where server_id = %s', [str(after.region), after.id])
+            db_cursor.execute('update servers set region = %s where server_id = %s', [str(getattr(after, 'preferred_locale', 'unknown')), after.id])
             self.connection.commit()
             db_cursor.close()
 
@@ -1305,5 +1285,5 @@ class Db(commands.Cog):
         result = cursor.fetchone()
         return result[0]
 
-def setup(bot):
-    bot.add_cog(Db(bot))
+async def setup(bot):
+    await bot.add_cog(Db(bot))

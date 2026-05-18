@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 
 import aiohttp
 import discord
-from discord.ext import commands, flags, tasks
+from discord.ext import commands, tasks
+import discord_ext_flags_compat as flags
 from discord.ext.commands.errors import CheckFailure
 from helpers import pagination
 
@@ -157,7 +158,7 @@ class Bot(commands.Cog):
     @flags.add_flag('--error', action = 'store_true')
     @flags.add_flag('--help', action = 'store_true')
     @flags.add_flag('--suggestion', action = 'store_true')
-    @flags.commands.cooldown(1, 5*60, commands.BucketType.user) # 5 minutes cooldown
+    @commands.cooldown(1, 5*60, commands.BucketType.user) # 5 minutes cooldown
     @flags.command()
     async def support_ticket(self, ctx: commands.Context, **flags):
         """Contact Developer by making a support ticket
@@ -295,12 +296,12 @@ class Bot(commands.Cog):
 
         embed = self.bot.Embed(color=0xf1c40f)
         embed.title = "Invite this bot"
-        embed.set_thumbnail(url=self.bot.user.avatar_url)
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url if hasattr(self.bot.user, 'display_avatar') else str(self.bot.user.avatar))
         embed.add_field(
             name="Invite Link", value="https://top.gg/bot/717368969102622770", inline=False
         )
 
         await ctx.send(embed=embed)
 
-def setup(bot):
-    bot.add_cog(Bot(bot))
+async def setup(bot):
+    await bot.add_cog(Bot(bot))

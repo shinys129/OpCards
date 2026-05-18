@@ -16,7 +16,7 @@ class Configuration(commands.Cog):
 
         embed = self.bot.Embed()
         embed.title = "Server Configuration"
-        embed.set_thumbnail(url=ctx.guild.icon_url)
+        embed.set_thumbnail(url=(ctx.guild.icon.url if ctx.guild.icon else None))
 
         embed.add_field(
             name=f"Prefix {commands.get('prefix_command', '')}",
@@ -119,5 +119,5 @@ class Configuration(commands.Cog):
 
         await ctx.send(f"Changed prefix to `{prefix}` for this server.")
 
-def setup(bot):
-    bot.add_cog(Configuration(bot))
+async def setup(bot):
+    await bot.add_cog(Configuration(bot))

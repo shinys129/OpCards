@@ -1,5 +1,6 @@
 import discord
-from discord.ext import commands, flags, tasks
+from discord.ext import commands, tasks
+import discord_ext_flags_compat as flags
 from helpers import checks, constants, pagination
 import math
 import random
@@ -286,5 +287,5 @@ def divideList(arr, n): # n is the size to divide by, n = 50 makes teh arr into 
         out.append(arr[i : i + n])
     return out
 
-def setup(bot):
-    bot.add_cog(Market(bot))
+async def setup(bot):
+    await bot.add_cog(Market(bot))

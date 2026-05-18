@@ -3,7 +3,8 @@ import typing
 from datetime import datetime
 
 import discord
-from discord.ext import commands, flags
+from discord.ext import commands
+import discord_ext_flags_compat as flags
 from helpers import pagination, constants, checks
 import math
 
@@ -29,7 +30,7 @@ class Administration(commands.Cog):
     @flags.add_flag('--error', action = 'store_true')
     @flags.add_flag('--help', action = 'store_true')
     @flags.add_flag('--suggestion', action = 'store_true')
-    @flags.commands.is_owner()
+    @commands.is_owner()
     @flags.command()
     async def support(self, ctx: commands.Context, **flags):
         """Support Tickets Functions"""
@@ -110,5 +111,5 @@ class Administration(commands.Cog):
         await paginator.send(self.bot, ctx, flags['page'] - 1)
 
 
-def setup(bot: commands.Bot):
-    bot.add_cog(Administration(bot))
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Administration(bot))
