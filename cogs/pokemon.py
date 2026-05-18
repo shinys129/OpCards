@@ -46,10 +46,20 @@ class Pokemon(commands.Cog):
         self.global_stats = None
         self.bot_collection = None
         self.cards = []
+        self._initial_load_task = self.bot.loop.create_task(self._initial_load())
         self.update_cards.start()
         self.munch_obtainability.start()
         self.get_global_stats.start()
         self.get_bot_collection.start()
+
+    async def _initial_load(self):
+        await self.bot.wait_until_ready()
+        try:
+            self.cards = await self.bot.db.get_all_cards()
+            await self.get_global_stats()
+            await self.get_bot_collection()
+        except Exception as e:
+            self.bot.log.error(f"Initial load error: {e}")
 
     @tasks.loop(minutes = 60.0)
     async def update_cards(self):
