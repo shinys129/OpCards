@@ -8,7 +8,6 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "discord-py>=2.7.1",
     "jishaku>=2.7.5",
-    "numpy>=2.4.5",
     "pillow>=12.2.0",
     "pokemontcgsdk>=3.4.0",
     "pymysql>=1.1.3",

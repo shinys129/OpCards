@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import numpy as np
 import random
 
 emojis = {
@@ -69,7 +68,11 @@ class Gambling(commands.Cog):
         # Slots mechanism
         random.shuffle(SLOTS)
         server_advantage = 1.5
-        mach = [np.random.choice(SLOTS, p = [1/len(SLOTS)] * len(SLOTS) if ctx.guild.id != 725921184541310996 else [server_advantage/len(SLOTS)] + [(1-server_advantage/len(SLOTS))/(len(SLOTS)-1)]*(len(SLOTS)-1)) for i in range(16)]
+        if ctx.guild.id != 725921184541310996:
+            weights = [1/len(SLOTS)] * len(SLOTS)
+        else:
+            weights = [server_advantage/len(SLOTS)] + [(1-server_advantage/len(SLOTS))/(len(SLOTS)-1)] * (len(SLOTS)-1)
+        mach = [random.choices(SLOTS, weights=weights, k=1)[0] for i in range(16)]
         machine = divideList(mach, 4)
         win_show = [[':x:',':x:',':x:'],[':x:',':x:',':x:'],[':x:',':x:'],[':x:',':x:']]
         wins = slots_wins(machine)

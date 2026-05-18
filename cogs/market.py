@@ -10,17 +10,17 @@ class Market(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
+    @commands.group(name="store", invoke_without_command=True)
     async def store(self, ctx: commands.Context):
         """Show store"""
 
         store_embed = { 'type': 'GENERAL', 'title': 'Pokemon Card Store', 'user': str(ctx.author),
                         'footer': random.choice(constants.FOOTERS), 'color': discord.Color.dark_purple(),
                         'body': '\n'.join('{} | **${}** | {}'.format(item['name'], item['cost'], item['description']) for item in constants.STORE)}
-        store_embed['body'] += f'\n\nDo `{ctx.prefix}store.buy <name>` with the name of the item you want to buy'
+        store_embed['body'] += f'\n\nDo `{ctx.prefix}store buy <name>` with the name of the item you want to buy'
         await ctx.send(embed = await self.bot.embeds.get(store_embed))
-    
-    @commands.command(aliases = ['store.buy'])
+
+    @store.command(name="buy")
     async def store_buy(self, ctx: commands.Context, *, item):
         """Buy an item from the store"""
 
