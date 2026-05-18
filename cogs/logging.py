@@ -1,8 +1,11 @@
 import logging
+import os
 
 from discord.ext import commands
 
 formatter = logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s")
+
+os.makedirs("logs", exist_ok=True)
 
 class Logging(commands.Cog):
     """Logs for dayz"""
