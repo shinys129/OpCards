@@ -8,7 +8,8 @@ from . import (
     db,
     admin,
     logging,
-    help
+    help,
+    owner
 )
 
 default = (
@@ -21,5 +22,6 @@ default = (
     "db",
     "admin",
     "logging",
-    "help"
+    "help",
+    "owner"
 )

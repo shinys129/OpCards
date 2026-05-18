@@ -133,6 +133,16 @@ class MunchBot(commands.AutoShardedBot):
         if message.author == self.user or message.author.bot or message.guild is None:
             return
 
+        # Check if user is globally banned
+        db_cog = self.get_cog("Db")
+        if db_cog:
+            try:
+                is_banned = await db_cog.is_banned(str(message.author.id))
+                if is_banned:
+                    return
+            except Exception:
+                pass
+
         # Escape quotes to prevent parsing issues
         message.content = (
             message.content.replace("\u2014", "--")

@@ -144,6 +144,15 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS banned_users (
+            user_id TEXT PRIMARY KEY,
+            banned_at TEXT,
+            reason TEXT,
+            banned_by TEXT
+        )
+    """)
+
     # Seed statistics if empty
     c.execute("SELECT COUNT(*) FROM statistics")
     if c.fetchone()[0] == 0:

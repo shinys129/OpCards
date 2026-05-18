@@ -466,6 +466,138 @@ class DbSqlite:
         c.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (amount, str(user.id)))
         self.connection.commit()
 
+    async def set_money(self, user, amount):
+        c = self.connection.cursor()
+        c.execute("SELECT money FROM users WHERE user_id = ?", (str(user.id),))
+        row = c.fetchone()
+        if row:
+            c.execute("UPDATE users SET money = ? WHERE user_id = ?", (amount, str(user.id)))
+        else:
+            now = datetime.datetime.now().isoformat()
+            c.execute("""
+                INSERT INTO users (user_id, name, money, total_interactions, joined_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (str(user.id), str(user), amount, 0, now))
+        self.connection.commit()
+
+    async def remove_money(self, user, amount):
+        c = self.connection.cursor()
+        c.execute("UPDATE users SET money = max(0, money - ?) WHERE user_id = ?", (amount, str(user.id)))
+        self.connection.commit()
+
+    async def ban_user(self, user_id, reason, banned_by):
+        now = datetime.datetime.now().isoformat()
+        c = self.connection.cursor()
+        c.execute("""
+            INSERT OR REPLACE INTO banned_users (user_id, banned_at, reason, banned_by)
+            VALUES (?, ?, ?, ?)
+        """, (str(user_id), now, reason or "No reason given", str(banned_by)))
+        self.connection.commit()
+
+    async def unban_user(self, user_id):
+        c = self.connection.cursor()
+        c.execute("DELETE FROM banned_users WHERE user_id = ?", (str(user_id),))
+        self.connection.commit()
+
+    async def is_banned(self, user_id):
+        c = self.connection.cursor()
+        c.execute("SELECT 1 FROM banned_users WHERE user_id = ?", (str(user_id),))
+        return c.fetchone() is not None
+
+    async def get_banned_users(self):
+        c = self.connection.cursor()
+        c.execute("SELECT user_id, banned_at, reason, banned_by FROM banned_users ORDER BY banned_at DESC")
+        rows = c.fetchall()
+        return [{
+            "user_id": r[0], "banned_at": r[1], "reason": r[2], "banned_by": r[3]
+        } for r in rows]
+
+    async def get_user_info(self, user_id):
+        c = self.connection.cursor()
+        c.execute("SELECT user_id, name, money, total_interactions, joined_at FROM users WHERE user_id = ?", (str(user_id),))
+        row = c.fetchone()
+        if not row:
+            return None
+        c.execute("SELECT COUNT(*) FROM users_cards WHERE user_id = ?", (str(user_id),))
+        card_count = c.fetchone()[0]
+        c.execute("SELECT SUM(amount) FROM users_cards WHERE user_id = ?", (str(user_id),))
+        total_cards = c.fetchone()[0] or 0
+        banned = await self.is_banned(user_id)
+        return {
+            "user_id": row[0], "name": row[1], "money": row[2],
+            "interactions": row[3], "joined_at": row[4],
+            "unique_cards": card_count, "total_cards": total_cards,
+            "banned": banned
+        }
+
+    async def get_all_users_paginated(self, page=1, limit=20):
+        offset = (page - 1) * limit
+        c = self.connection.cursor()
+        c.execute("""
+            SELECT user_id, name, money, total_interactions, joined_at
+            FROM users ORDER BY money DESC LIMIT ? OFFSET ?
+        """, (limit, offset))
+        rows = c.fetchall()
+        return [{
+            "user_id": r[0], "name": r[1], "money": r[2],
+            "interactions": r[3], "joined_at": r[4]
+        } for r in rows]
+
+    async def count_all_users(self):
+        c = self.connection.cursor()
+        c.execute("SELECT COUNT(*) FROM users")
+        return c.fetchone()[0]
+
+    async def get_card_by_id(self, card_id):
+        c = self.connection.cursor()
+        c.execute("SELECT id, name, rarity, series FROM pokemon_cards WHERE id = ?", (card_id,))
+        row = c.fetchone()
+        if row:
+            return {"id": row[0], "name": row[1], "rarity": row[2], "series": row[3]}
+        return None
+
+    async def search_cards_by_name(self, name):
+        c = self.connection.cursor()
+        c.execute("""
+            SELECT id, name, rarity, series FROM pokemon_cards
+            WHERE name LIKE ? LIMIT 10
+        """, (f"%{name}%",))
+        return [{"id": r[0], "name": r[1], "rarity": r[2], "series": r[3]} for r in c.fetchall()]
+
+    async def add_card_to_user(self, user_id, card_id):
+        c = self.connection.cursor()
+        c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
+                  (str(user_id), card_id))
+        row = c.fetchone()
+        if row:
+            c.execute("UPDATE users_cards SET amount = amount + 1 WHERE user_id = ? AND pokemon_card_id = ?",
+                      (str(user_id), card_id))
+        else:
+            c.execute("INSERT INTO users_cards (user_id, pokemon_card_id, amount) VALUES (?, ?, 1)",
+                      (str(user_id), card_id))
+        self.connection.commit()
+
+    async def remove_card_from_user(self, user_id, card_id):
+        c = self.connection.cursor()
+        c.execute("SELECT amount FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
+                  (str(user_id), card_id))
+        row = c.fetchone()
+        if not row:
+            return False
+        if row[0] > 1:
+            c.execute("UPDATE users_cards SET amount = amount - 1 WHERE user_id = ? AND pokemon_card_id = ?",
+                      (str(user_id), card_id))
+        else:
+            c.execute("DELETE FROM users_cards WHERE user_id = ? AND pokemon_card_id = ?",
+                      (str(user_id), card_id))
+        self.connection.commit()
+        return True
+
+    async def reset_daily(self, user_id):
+        c = self.connection.cursor()
+        c.execute("DELETE FROM daily WHERE user_id = ?", (str(user_id),))
+        self.connection.commit()
+
     async def random_card(self, rarity=None):
         return await self.get_rng_cards(rarity)
 
